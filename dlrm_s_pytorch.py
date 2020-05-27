@@ -569,7 +569,7 @@ def parse_args(specified_args=None):
     parser.add_argument("--lr-num-warmup-steps", type=int, default=0)
     parser.add_argument("--lr-decay-start-step", type=int, default=0)
     parser.add_argument("--lr-num-decay-steps", type=int, default=0)
-    args = parser.parse_args()
+    args = parser.parse_args(specified_args)
 
     if args.mlperf_logging:
         print('command line args: ', json.dumps(vars(args)))
@@ -777,6 +777,27 @@ def create_model(args, m_spa, ln_emb, ln_bot, ln_top, use_gpu, ndevices):
             dlrm.emb_l = dlrm.create_emb(m_spa, ln_emb)
 
     return dlrm
+
+
+def get_setup_state(specified_args):
+    args = parse_args(specified_args)
+    init_environment(args)
+
+    ln_emb, ln_bot, m_den, train_ld, nbatches = generate_data(args)
+
+    m_spa, ln_top = apply_args_to_data(args, ln_emb, ln_bot, m_den)
+
+    return args, train_ld, (m_spa, ln_emb, ln_bot, ln_top)
+
+
+def get_model(args, m_spa, ln_emb, ln_bot, ln_top):
+    return create_model(args, m_spa, ln_emb, ln_bot, ln_top, False, -1)
+
+
+def get_input_data(train_ld):
+    # Just return first element
+    for X, lS_o, lS_i, T in train_ld:
+        return (X, lS_o, lS_i)
 
 
 def main():
