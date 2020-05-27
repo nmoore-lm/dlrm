@@ -60,6 +60,8 @@ import functools
 # import shutil
 import time
 import json
+import sys
+import argparse
 # data generation
 import dlrm_data_pytorch as dp
 
@@ -462,15 +464,13 @@ class DLRM_Net(nn.Module):
         return z0
 
 
-if __name__ == "__main__":
-    ### import packages ###
-    import sys
-    import argparse
+def parse_args(specified_args=None):
+    if specified_args is None:
+        specified_args = sys.argv
 
     ### parse arguments ###
     parser = argparse.ArgumentParser(
-        description="Train Deep Learning Recommendation Model (DLRM)"
-    )
+        description="Train Deep Learning Recommendation Model (DLRM)")
     # model related parameters
     parser.add_argument("--arch-sparse-feature-size", type=int, default=2)
     parser.add_argument("--arch-embedding-size", type=str, default="4-3-2")
@@ -478,7 +478,9 @@ if __name__ == "__main__":
     parser.add_argument("--arch-mlp-bot", type=str, default="4-3-2")
     parser.add_argument("--arch-mlp-top", type=str, default="4-2-1")
     parser.add_argument("--arch-interaction-op", type=str, default="dot")
-    parser.add_argument("--arch-interaction-itself", action="store_true", default=False)
+    parser.add_argument("--arch-interaction-itself",
+                        action="store_true",
+                        default=False)
     # embedding table options
     parser.add_argument("--md-flag", action="store_true", default=False)
     parser.add_argument("--md-threshold", type=int, default=200)
@@ -490,26 +492,36 @@ if __name__ == "__main__":
     parser.add_argument("--qr-collisions", type=int, default=4)
     # activations and loss
     parser.add_argument("--activation-function", type=str, default="relu")
-    parser.add_argument("--loss-function", type=str, default="mse")  # or bce or wbce
-    parser.add_argument("--loss-weights", type=str, default="1.0-1.0")  # for wbce
+    parser.add_argument("--loss-function", type=str,
+                        default="mse")  # or bce or wbce
+    parser.add_argument("--loss-weights", type=str,
+                        default="1.0-1.0")  # for wbce
     parser.add_argument("--loss-threshold", type=float, default=0.0)  # 1.0e-7
     parser.add_argument("--round-targets", type=bool, default=False)
     # data
     parser.add_argument("--data-size", type=int, default=1)
     parser.add_argument("--num-batches", type=int, default=0)
-    parser.add_argument(
-        "--data-generation", type=str, default="random"
-    )  # synthetic or dataset
-    parser.add_argument("--data-trace-file", type=str, default="./input/dist_emb_j.log")
-    parser.add_argument("--data-set", type=str, default="kaggle")  # or terabyte
+    parser.add_argument("--data-generation", type=str,
+                        default="random")  # synthetic or dataset
+    parser.add_argument("--data-trace-file",
+                        type=str,
+                        default="./input/dist_emb_j.log")
+    parser.add_argument("--data-set", type=str,
+                        default="kaggle")  # or terabyte
     parser.add_argument("--raw-data-file", type=str, default="")
     parser.add_argument("--processed-data-file", type=str, default="")
-    parser.add_argument("--data-randomize", type=str, default="total")  # or day or none
-    parser.add_argument("--data-trace-enable-padding", type=bool, default=False)
+    parser.add_argument("--data-randomize", type=str,
+                        default="total")  # or day or none
+    parser.add_argument("--data-trace-enable-padding",
+                        type=bool,
+                        default=False)
     parser.add_argument("--max-ind-range", type=int, default=-1)
-    parser.add_argument("--data-sub-sample-rate", type=float, default=0.0)  # in [0, 1]
+    parser.add_argument("--data-sub-sample-rate", type=float,
+                        default=0.0)  # in [0, 1]
     parser.add_argument("--num-indices-per-lookup", type=int, default=10)
-    parser.add_argument("--num-indices-per-lookup-fixed", type=bool, default=False)
+    parser.add_argument("--num-indices-per-lookup-fixed",
+                        type=bool,
+                        default=False)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--memory-map", action="store_true", default=False)
     # training
@@ -532,8 +544,12 @@ if __name__ == "__main__":
     parser.add_argument("--test-num-workers", type=int, default=-1)
     parser.add_argument("--print-time", action="store_true", default=False)
     parser.add_argument("--debug-mode", action="store_true", default=False)
-    parser.add_argument("--enable-profiling", action="store_true", default=False)
-    parser.add_argument("--plot-compute-graph", action="store_true", default=False)
+    parser.add_argument("--enable-profiling",
+                        action="store_true",
+                        default=False)
+    parser.add_argument("--plot-compute-graph",
+                        action="store_true",
+                        default=False)
     # store/load model
     parser.add_argument("--save-model", type=str, default="")
     parser.add_argument("--load-model", type=str, default="")
@@ -543,8 +559,12 @@ if __name__ == "__main__":
     parser.add_argument("--mlperf-acc-threshold", type=float, default=0.0)
     # stop at target AUC Terabyte (no subsampling) 0.8025
     parser.add_argument("--mlperf-auc-threshold", type=float, default=0.0)
-    parser.add_argument("--mlperf-bin-loader", action='store_true', default=False)
-    parser.add_argument("--mlperf-bin-shuffle", action='store_true', default=False)
+    parser.add_argument("--mlperf-bin-loader",
+                        action='store_true',
+                        default=False)
+    parser.add_argument("--mlperf-bin-shuffle",
+                        action='store_true',
+                        default=False)
     # LR policy
     parser.add_argument("--lr-num-warmup-steps", type=int, default=0)
     parser.add_argument("--lr-decay-start-step", type=int, default=0)
@@ -553,6 +573,12 @@ if __name__ == "__main__":
 
     if args.mlperf_logging:
         print('command line args: ', json.dumps(vars(args)))
+
+    return args
+
+
+def main():
+    args = parse_args()
 
     ### some basic setup ###
     np.random.seed(args.numpy_rand_seed)
@@ -1225,3 +1251,7 @@ if __name__ == "__main__":
         dlrm_pytorch_onnx = onnx.load("dlrm_s_pytorch.onnx")
         # check the onnx model
         onnx.checker.check_model(dlrm_pytorch_onnx)
+
+
+if __name__ == "__main__":
+    main()
