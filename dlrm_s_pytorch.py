@@ -577,15 +577,14 @@ def parse_args(specified_args=None):
     return args
 
 
-def main():
-    args = parse_args()
-
-    ### some basic setup ###
+def init_environment(args):
     np.random.seed(args.numpy_rand_seed)
     np.set_printoptions(precision=args.print_precision)
     torch.set_printoptions(precision=args.print_precision)
     torch.manual_seed(args.numpy_rand_seed)
 
+
+def init_test_flags(args):
     if (args.test_mini_batch_size < 0):
         # if the parameter is not set, use the training batch size
         args.test_mini_batch_size = args.mini_batch_size
@@ -593,6 +592,8 @@ def main():
         # if the parameter is not set, use the same parameter for training
         args.test_num_workers = args.num_workers
 
+
+def init_compute_device(args):
     use_gpu = args.use_gpu and torch.cuda.is_available()
     if use_gpu:
         torch.cuda.manual_seed_all(args.numpy_rand_seed)
@@ -604,6 +605,10 @@ def main():
         device = torch.device("cpu")
         print("Using CPU...")
 
+    return use_gpu, device
+
+
+def generate_data(args):
     ### prepare training data ###
     ln_bot = np.fromstring(args.arch_mlp_bot, dtype=int, sep="-")
     # input data
@@ -617,19 +622,26 @@ def main():
         ln_emb = train_data.counts
         # enforce maximum limit on number of vectors per embedding
         if args.max_ind_range > 0:
-            ln_emb = np.array(list(map(
-                lambda x: x if x < args.max_ind_range else args.max_ind_range,
-                ln_emb
-            )))
+            ln_emb = np.array(
+                list(
+                    map(
+                        lambda x: x
+                        if x < args.max_ind_range else args.max_ind_range,
+                        ln_emb)))
         m_den = train_data.m_den
         ln_bot[0] = m_den
     else:
         # input and target at random
         ln_emb = np.fromstring(args.arch_embedding_size, dtype=int, sep="-")
         m_den = ln_bot[0]
-        train_data, train_ld = dp.make_random_data_and_loader(args, ln_emb, m_den)
+        train_data, train_ld = dp.make_random_data_and_loader(
+            args, ln_emb, m_den)
         nbatches = args.num_batches if args.num_batches > 0 else len(train_ld)
 
+    return ln_emb, ln_bot, m_den, train_ld, nbatches
+
+
+def apply_args_to_data(args, ln_emb, ln_bot, m_den):
     ### parse command line arguments ###
     m_spa = args.arch_sparse_feature_size
     num_fea = ln_emb.size + 1  # num sparse + num dense features
@@ -645,53 +657,35 @@ def main():
     elif args.arch_interaction_op == "cat":
         num_int = num_fea * m_den_out
     else:
-        sys.exit(
-            "ERROR: --arch-interaction-op="
-            + args.arch_interaction_op
-            + " is not supported"
-        )
+        sys.exit("ERROR: --arch-interaction-op=" + args.arch_interaction_op +
+                 " is not supported")
     arch_mlp_top_adjusted = str(num_int) + "-" + args.arch_mlp_top
     ln_top = np.fromstring(arch_mlp_top_adjusted, dtype=int, sep="-")
 
     # sanity check: feature sizes and mlp dimensions must match
     if m_den != ln_bot[0]:
-        sys.exit(
-            "ERROR: arch-dense-feature-size "
-            + str(m_den)
-            + " does not match first dim of bottom mlp "
-            + str(ln_bot[0])
-        )
+        sys.exit("ERROR: arch-dense-feature-size " + str(m_den) +
+                 " does not match first dim of bottom mlp " + str(ln_bot[0]))
     if args.qr_flag:
         if args.qr_operation == "concat" and 2 * m_spa != m_den_out:
             sys.exit(
-                "ERROR: 2 arch-sparse-feature-size "
-                + str(2 * m_spa)
-                + " does not match last dim of bottom mlp "
-                + str(m_den_out)
-                + " (note that the last dim of bottom mlp must be 2x the embedding dim)"
+                "ERROR: 2 arch-sparse-feature-size " + str(2 * m_spa) +
+                " does not match last dim of bottom mlp " + str(m_den_out) +
+                " (note that the last dim of bottom mlp must be 2x the embedding dim)"
             )
         if args.qr_operation != "concat" and m_spa != m_den_out:
-            sys.exit(
-                "ERROR: arch-sparse-feature-size "
-                + str(m_spa)
-                + " does not match last dim of bottom mlp "
-                + str(m_den_out)
-            )
+            sys.exit("ERROR: arch-sparse-feature-size " + str(m_spa) +
+                     " does not match last dim of bottom mlp " +
+                     str(m_den_out))
     else:
         if m_spa != m_den_out:
-            sys.exit(
-                "ERROR: arch-sparse-feature-size "
-                + str(m_spa)
-                + " does not match last dim of bottom mlp "
-                + str(m_den_out)
-            )
+            sys.exit("ERROR: arch-sparse-feature-size " + str(m_spa) +
+                     " does not match last dim of bottom mlp " +
+                     str(m_den_out))
     if num_int != ln_top[0]:
-        sys.exit(
-            "ERROR: # of feature interactions "
-            + str(num_int)
-            + " does not match first dimension of top mlp "
-            + str(ln_top[0])
-        )
+        sys.exit("ERROR: # of feature interactions " + str(num_int) +
+                 " does not match first dimension of top mlp " +
+                 str(ln_top[0]))
 
     # assign mixed dimensions if applicable
     if args.md_flag:
@@ -699,25 +693,22 @@ def main():
             torch.tensor(ln_emb),
             args.md_temperature,  # alpha
             d0=m_spa,
-            round_dim=args.md_round_dims
-        ).tolist()
+            round_dim=args.md_round_dims).tolist()
 
+    return m_spa, ln_top
+
+
+def initial_debug_print(args):
     # test prints (model arch)
     if args.debug_mode:
         print("model arch:")
-        print(
-            "mlp top arch "
-            + str(ln_top.size - 1)
-            + " layers, with input to output dimensions:"
-        )
+        print("mlp top arch " + str(ln_top.size - 1) +
+              " layers, with input to output dimensions:")
         print(ln_top)
         print("# of interactions")
         print(num_int)
-        print(
-            "mlp bot arch "
-            + str(ln_bot.size - 1)
-            + " layers, with input to output dimensions:"
-        )
+        print("mlp bot arch " + str(ln_bot.size - 1) +
+              " layers, with input to output dimensions:")
         print(ln_bot)
         print("# of features (sparse and dense)")
         print(num_fea)
@@ -725,13 +716,8 @@ def main():
         print(m_den)
         print("sparse feature size")
         print(m_spa)
-        print(
-            "# of embeddings (= # of sparse features) "
-            + str(ln_emb.size)
-            + ", with dimensions "
-            + str(m_spa)
-            + "x:"
-        )
+        print("# of embeddings (= # of sparse features) " + str(ln_emb.size) +
+              ", with dimensions " + str(m_spa) + "x:")
         print(ln_emb)
 
         print("data (inputs and targets):")
@@ -743,16 +729,28 @@ def main():
             print("mini-batch: %d" % j)
             print(X.detach().cpu().numpy())
             # transform offsets to lengths when printing
-            print(
-                [
-                    np.diff(
-                        S_o.detach().cpu().tolist() + list(lS_i[i].shape)
-                    ).tolist()
-                    for i, S_o in enumerate(lS_o)
-                ]
-            )
+            print([
+                np.diff(S_o.detach().cpu().tolist() +
+                        list(lS_i[i].shape)).tolist()
+                for i, S_o in enumerate(lS_o)
+            ])
             print([S_i.detach().cpu().tolist() for S_i in lS_i])
             print(T.detach().cpu().numpy())
+
+
+def main():
+    args = parse_args()
+
+    init_environment(args)
+    init_test_flags(args)
+    
+    use_gpu, device = init_compute_device(args)
+
+    ln_emb, ln_bot, m_den, train_ld, nbatches = generate_data(args)
+
+    m_spa, ln_top = apply_args_to_data(args, ln_emb, ln_bot, m_den)
+
+    initial_debug_print(args)
 
     ndevices = min(ngpus, args.mini_batch_size, num_fea - 1) if use_gpu else -1
 
