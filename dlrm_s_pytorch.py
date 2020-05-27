@@ -737,23 +737,7 @@ def initial_debug_print(args):
             print([S_i.detach().cpu().tolist() for S_i in lS_i])
             print(T.detach().cpu().numpy())
 
-
-def main():
-    args = parse_args()
-
-    init_environment(args)
-    init_test_flags(args)
-    
-    use_gpu, device = init_compute_device(args)
-
-    ln_emb, ln_bot, m_den, train_ld, nbatches = generate_data(args)
-
-    m_spa, ln_top = apply_args_to_data(args, ln_emb, ln_bot, m_den)
-
-    initial_debug_print(args)
-
-    ndevices = min(ngpus, args.mini_batch_size, num_fea - 1) if use_gpu else -1
-
+def create_model(args, m_spa, ln_emb, ln_bot, ln_top, use_gpu, ndevices):
     ### construct the neural network specified above ###
     # WARNING: to obtain exactly the same initialization for
     # the weights we need to start from the same random seed.
@@ -791,6 +775,27 @@ def main():
         dlrm = dlrm.to(device)  # .cuda()
         if dlrm.ndevices > 1:
             dlrm.emb_l = dlrm.create_emb(m_spa, ln_emb)
+
+    return dlrm
+
+
+def main():
+    args = parse_args()
+
+    init_environment(args)
+    init_test_flags(args)
+
+    use_gpu, device = init_compute_device(args)
+
+    ln_emb, ln_bot, m_den, train_ld, nbatches = generate_data(args)
+
+    m_spa, ln_top = apply_args_to_data(args, ln_emb, ln_bot, m_den)
+
+    initial_debug_print(args)
+
+    ndevices = min(ngpus, args.mini_batch_size, num_fea - 1) if use_gpu else -1
+
+    dlrm = create_model(args, m_spa, ln_emb, ln_bot, ln_top, use_gpu, ndevices)
 
     # specify the loss function
     if args.loss_function == "mse":
